@@ -7,7 +7,7 @@ import type { VocabularyWord } from "@/hooks/useVocabulary";
 
 const API_KEY_STORAGE = "englishvocab-mistral-key-v1";
 
-function simpleMarkdown(text: string): string {
+export function simpleMarkdown(text: string): string {
   // Lightweight Markdown → HTML for the study plan output (headings, bold, lists, tables, line breaks)
   const lines = text.split("\n");
   const out: string[] = [];

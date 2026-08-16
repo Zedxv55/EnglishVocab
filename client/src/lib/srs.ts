@@ -35,6 +35,31 @@ export function reviewWord(previous: SrsRecord | undefined, grade: Grade, now = 
 
 export function isDue(record: SrsRecord | undefined, now = new Date()) { return Boolean(record && new Date(record.dueAt).getTime() <= now.getTime()); }
 export function gradeLabel(grade: Grade) { return { again: "จำไม่ได้", hard: "ยาก", good: "ดี", easy: "ง่าย" }[grade]; }
+
+/** Lightweight daily review log: records how many reviews happened on each day. */
+export const DAILY_LOG_KEY = "englishvocab-daily-log-v1";
+export function logTodayReview(): void {
+  const dayKey = new Date().toISOString().slice(0, 10);
+  try {
+    const log = JSON.parse(localStorage.getItem(DAILY_LOG_KEY) || "{}") as Record<string, number>;
+    log[dayKey] = (log[dayKey] || 0) + 1;
+    localStorage.setItem(DAILY_LOG_KEY, JSON.stringify(log));
+  } catch { /* storage unavailable */ }
+}
+export function readDailyLog(): Record<string, number> {
+  try { return JSON.parse(localStorage.getItem(DAILY_LOG_KEY) || "{}") as Record<string, number>; } catch { return {}; }
+}
+export function lastSevenDays(log: Record<string, number>): { day: string; short: string; count: number }[] {
+  const days = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
+  const out: { day: string; short: string; count: number }[] = [];
+  const now = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date(now); date.setDate(now.getDate() - i);
+    const key = date.toISOString().slice(0, 10);
+    out.push({ day: key, short: days[date.getDay()], count: log[key] || 0 });
+  }
+  return out;
+}
 export function nextIntervalLabel(record: SrsRecord | undefined, grade: Grade) {
   const ms = new Date(reviewWord(record, grade).dueAt).getTime() - Date.now();
   return ms < DAY ? "10 นาที" : `${Math.max(1, Math.round(ms / DAY))} วัน`;
