@@ -203,7 +203,39 @@ function vitePluginStorageProxy(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector(), vitePluginStorageProxy()];
+function vitePluginApiProxy(): Plugin {
+  return {
+    name: "manus-api-proxy",
+    configureServer(server: ViteDevServer) {
+      // Forward /api requests to the Express server during development.
+      // Use Vite's ssrLoadModule so .ts server sources are transformed correctly.
+      server.middlewares.use("/api", async (req, res) => {
+        // Prevent the imported module from starting its own listener.
+        process.env.MANUS_API_PROXY = "1";
+        const serverModule = await server.ssrLoadModule(path.resolve(PROJECT_ROOT, "server/index.ts"));
+        const app =
+          (serverModule as any).app ||
+          (serverModule as any).default?.app ||
+          typeof (serverModule as any).createApp === "function" ? (serverModule as any).createApp() : null;
+        if (!app) {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("API server not available");
+          return;
+        }
+        // Rewrite so the express router sees the full /api... path (the middleware prefix strips it).
+        const r = req as any;
+        r.originalUrl = "/api" + (r.url || "/");
+        r.url = "/api" + (r.url || "/");
+        app(r, res, () => {
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Not found");
+        });
+      });
+    },
+  };
+}
+
+const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector(), vitePluginStorageProxy(), vitePluginApiProxy()];
 
 export default defineConfig({
   plugins,
