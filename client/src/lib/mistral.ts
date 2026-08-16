@@ -200,3 +200,51 @@ Start the conversation naturally fitting the situation.`;
   ];
   return chat(messages, config);
 }
+
+
+export type LearningHubMode = "auto" | "lookup" | "explain" | "translate" | "wordset" | "quiz";
+export type LearningHubWord = { word: string; meaning: string; pos?: string; example?: string };
+export type LearningHubResult = {
+  title: string;
+  summary: string;
+  answer: string;
+  words: LearningHubWord[];
+  examples: { en: string; th: string }[];
+  exercise: { question: string; choices: string[]; answer: number; explanation: string }[];
+};
+
+function parseLearningHub(answer: string): LearningHubResult {
+  const fenced = answer.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const objectMatch = answer.match(/\{[\s\S]*\}/);
+  const candidate = (fenced?.[1] || objectMatch?.[0] || "").trim();
+  try {
+    const raw = JSON.parse(candidate) as Partial<LearningHubResult>;
+    return {
+      title: raw.title || "บทเรียนจาก AI",
+      summary: raw.summary || "",
+      answer: raw.answer || "",
+      words: Array.isArray(raw.words) ? raw.words.slice(0, 12).map((w) => ({ word: String(w.word || ""), meaning: String(w.meaning || ""), pos: w.pos ? String(w.pos) : undefined, example: w.example ? String(w.example) : undefined })).filter((w) => w.word) : [],
+      examples: Array.isArray(raw.examples) ? raw.examples.slice(0, 8).map((e) => ({ en: String(e.en || ""), th: String(e.th || "") })).filter((e) => e.en) : [],
+      exercise: Array.isArray(raw.exercise) ? raw.exercise.slice(0, 6).map((e) => ({ question: String(e.question || ""), choices: Array.isArray(e.choices) ? e.choices.map(String).slice(0, 4) : [], answer: typeof e.answer === "number" ? e.answer : 0, explanation: String(e.explanation || "") })).filter((e) => e.question) : [],
+    };
+  } catch {
+    return { title: "คำตอบจาก AI", summary: "", answer, words: [], examples: [], exercise: [] };
+  }
+}
+
+export function learningHub(config: MistralConfig, mode: LearningHubMode, prompt: string, context: { level: ProficiencyLevel; recentWords: { w: string; th: string }[] }): Promise<LearningHubResult> {
+  const modeInstruction: Record<LearningHubMode, string> = {
+    auto: "เลือกวิธีช่วยที่เหมาะที่สุดจากคำถาม: ค้นคำ อธิบาย แปล สร้างชุดคำ หรือสร้างแบบฝึกหัด",
+    lookup: "ค้นหาคำศัพท์ที่ตรงหรือใกล้เคียงกับความหมายที่ผู้เรียนถาม อธิบายความแตกต่างสั้น ๆ",
+    explain: "อธิบายคำหรือไวยากรณ์ที่ผู้เรียนถามแบบง่าย เริ่มจากความหมายและตัวอย่าง",
+    translate: "แปลข้อความให้เป็นภาษาอังกฤษที่เป็นธรรมชาติ 2-3 ระดับ พร้อมบริบทการใช้",
+    wordset: "สร้างชุดคำศัพท์ 8-12 คำตามหัวข้อหรือเป้าหมายของผู้เรียน",
+    quiz: "สร้างแบบฝึกหัด 4-6 ข้อจากหัวข้อหรือคำศัพท์ที่ผู้เรียนระบุ",
+  };
+  const recent = context.recentWords.length ? context.recentWords.map((w) => `${w.w} — ${w.th}`).join(", ") : "ยังไม่มีคำที่เรียนล่าสุด";
+  const system = `You are the AI Learning Hub inside an English learning app for Thai beginners. Respond in Thai, except English examples. ${modeInstruction[mode]}
+Return ONLY valid JSON with this exact shape:
+{"title":"short Thai title","summary":"one short Thai summary","answer":"main answer in Thai with Markdown allowed","words":[{"word":"English","meaning":"Thai","pos":"part of speech","example":"short English sentence"}],"examples":[{"en":"English sentence","th":"Thai translation"}],"exercise":[{"question":"Thai or English question","choices":["a","b","c","d"],"answer":0,"explanation":"short Thai explanation"}]}
+For lookup/explain/translate, words and examples are useful; for wordset, include 8-12 words; for quiz, include exercise. Keep the answer practical, encouraging, and suitable for level ${context.level}. Do not invent personal data. Recent learning words: ${recent}.`;
+  return chat([{ role: "system", content: system }, { role: "user", content: prompt || "ช่วยแนะนำคำศัพท์ภาษาอังกฤษที่ควรเรียนวันนี้" }], config).then(parseLearningHub);
+}
