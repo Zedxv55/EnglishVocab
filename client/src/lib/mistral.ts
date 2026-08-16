@@ -176,3 +176,27 @@ Keep the whole reply under 150 words. ${wordsCtx}`;
     config,
   );
 }
+
+/** Role-play conversation practice with Mistral. */
+export type ChatMessage = { role: "user" | "assistant"; text: string };
+
+export function roleplayChat(
+  config: MistralConfig,
+  situation: string,
+  history: ChatMessage[],
+): Promise<string> {
+  const historyMessages = history.map((m) => ({ role: m.role, content: m.text }));
+  const system = `You are a friendly conversation partner for a Thai learner practicing English.
+Situation: ${situation}.
+Rules:
+1. Always stay in character as the role-play partner and speak ONLY in simple, natural English (one short line per turn, 5–15 words).
+2. After your English line, add a short Thai hint in parentheses explaining what your line means or suggesting how the learner could reply, only when it helps a beginner.
+3. Keep vocabulary very simple and gradually increase difficulty as the learner improves.
+4. Never break character and never write long paragraphs.
+Start the conversation naturally fitting the situation.`;
+  const messages = [
+    { role: "system", content: system },
+    ...historyMessages,
+  ];
+  return chat(messages, config);
+}

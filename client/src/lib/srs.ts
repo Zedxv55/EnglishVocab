@@ -64,3 +64,52 @@ export function nextIntervalLabel(record: SrsRecord | undefined, grade: Grade) {
   const ms = new Date(reviewWord(record, grade).dueAt).getTime() - Date.now();
   return ms < DAY ? "10 นาที" : `${Math.max(1, Math.round(ms / DAY))} วัน`;
 }
+
+/** Streak & daily goal tracking built on top of the daily review log. */
+export interface StreakInfo {
+  /** จำนวนวันเรียนต่อเนื่องรวมวันนี้ */
+  currentStreak: number;
+  /** Streak สูงสุดที่เคยทำ */
+  bestStreak: number;
+  /** รอบทบทวนที่ทำได้วันนี้ */
+  todayCount: number;
+  /** เป้าหมายรายวัน (รอบ) */
+  goal: number;
+}
+
+const GOAL_KEY = "englishvocab-daily-goal-v1";
+const BEST_KEY = "englishvocab-best-streak-v1";
+
+export function setDailyGoal(goal: number): void {
+  try { localStorage.setItem(GOAL_KEY, String(Math.max(1, Math.min(100, goal)))); } catch { /* ignore */ }
+}
+
+export function readDailyGoal(): number {
+  try {
+    const raw = localStorage.getItem(GOAL_KEY);
+    if (raw) return Math.max(1, Math.min(100, Number(raw)));
+  } catch { /* ignore */ }
+  return 10;
+}
+
+export function computeStreak(log: Record<string, number>): StreakInfo {
+  const todayKey = new Date().toISOString().slice(0, 10);
+  let currentStreak = 0;
+  let best = (() => { try { return Number(localStorage.getItem(BEST_KEY)) || 0; } catch { return 0; } })();
+  const now = new Date();
+  for (let i = 0; i < 400; i++) {
+    const date = new Date(now);
+    date.setDate(now.getDate() - i);
+    const key = date.toISOString().slice(0, 10);
+    if (log[key] && log[key] > 0) {
+      currentStreak += 1;
+    } else if (i > 0) {
+      break;
+    }
+  }
+  if (currentStreak > best) {
+    best = currentStreak;
+    try { localStorage.setItem(BEST_KEY, String(best)); } catch { /* ignore */ }
+  }
+  return { currentStreak, bestStreak: best, todayCount: log[todayKey] || 0, goal: readDailyGoal() };
+}
